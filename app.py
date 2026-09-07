@@ -1,4 +1,4 @@
-import os
+﻿import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
@@ -21,7 +21,7 @@ def analyze_quantum():
         
         headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
         payload = {
-            "model": "llama3-8b-8192",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Analyze this property: {address}"}
@@ -62,7 +62,7 @@ def analyze_chat():
 
         headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
         payload = {
-            "model": "llama3-8b-8192",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_query}
