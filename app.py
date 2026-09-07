@@ -8,11 +8,9 @@ CORS(app)
 
 def get_clean_groq_key():
     key = os.environ.get('GROQ_API_KEY', '')
-    if not key:
-        return None
+    if not key: return None
     key = key.strip().strip('"').strip("'")
-    if key.startswith("Bearer "):
-        key = key[7:].strip()
+    if key.startswith("Bearer "): key = key[7:].strip()
     return key if key else None
 
 @app.route('/', methods=['GET', 'HEAD'])
@@ -23,17 +21,25 @@ def root():
 def analyze_quantum():
     try:
         data = request.json or {}
-        address = data.get('address', 'Target Asset')
-        print(f">>> [SV-1500] INGESTING ASSET: {address}")
+        asset_data = data.get('asset', {})
+        if not asset_data: asset_data = data
+        
+        address = asset_data.get('address', 'Target Asset')
+        arv = asset_data.get('arv', 'Unknown')
+        rehab = asset_data.get('rehab_estimate', asset_data.get('rehab', 'Unknown'))
+        
+        print(f">>> [SV-1500] INGESTING ASSET: {address} | ARV: {arv} | Rehab: {rehab}")
 
         groq_key = get_clean_groq_key()
-        if not groq_key:
-            return jsonify({"error": "GROQ_API_KEY not configured."}), 500
+        if not groq_key: return jsonify({"error": "GROQ_API_KEY not configured."}), 500
 
         system_prompt = (
             "You are SV-1500, an elite institutional real estate AI underwriter for Rodney & Sons. "
-            "Never ask clarifying questions. Instantly generate a rigorous financial breakdown: "
-            "Estimated ARV, Estimated Rehab Cost, and a concise 1-sentence Risk Analysis based on Missouri real estate parameters."
+            "CRITICAL: You MUST use these exact verified database numbers in your output:\n"
+            f"- Estimated ARV: ${arv}\n"
+            f"- Estimated Rehab Cost: ${rehab}\n"
+            "Never ask clarifying questions. Instantly output those exact numbers formatted nicely, "
+            "followed by a concise 1-sentence Risk Analysis based on Missouri real estate parameters."
         )
 
         headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
@@ -46,19 +52,14 @@ def analyze_quantum():
             "temperature": 0.1,
             "max_tokens": 1024
         }
-
-        response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=20)
         
+        response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=20)
         if response.status_code != 200:
-            error_detail = response.text
-            print(f">>> [GROQ REJECTED {response.status_code}]: {error_detail}")
-            return jsonify({"error": f"Groq API {response.status_code}: {error_detail}"}), 503
+            return jsonify({"error": f"Groq API {response.status_code}: {response.text}"}), 503
 
         ai_text = response.json().get('choices', [{}])[0].get('message', {}).get('content', '')
         return jsonify({"analysis": ai_text}), 200
-
     except Exception as e:
-        print(f">>> [QUANTUM ERROR]: {str(e)}")
         return jsonify({"error": f"Quantum uplink failed: {str(e)}"}), 503
 
 @app.route('/api/v1/analyze/chat', methods=['POST'])
@@ -66,22 +67,20 @@ def analyze_chat():
     try:
         data = request.json or {}
         address = data.get('address', 'Target Asset')
+        arv = data.get('arv', 'Unknown')
+        rehab = data.get('rehab', 'Unknown')
         user_query = data.get('query', '')
 
-        if not user_query:
-            return jsonify({"reply": "[SYSTEM]: Query payload empty."}), 400
-
+        if not user_query: return jsonify({"reply": "[SYSTEM]: Query payload empty."}), 400
         groq_key = get_clean_groq_key()
-        if not groq_key:
-            return jsonify({"reply": "[FATAL ERROR]: GROQ_API_KEY missing."}), 500
+        if not groq_key: return jsonify({"reply": "[FATAL ERROR]: GROQ_API_KEY missing."}), 500
 
         system_prompt = (
             "You are SV-1500, an elite autonomous AI Underwriter for Rodney & Sons. "
-            "You have full access to real-time property telemetry. Never ask the user for property details, square footage, or condition. "
-            "Instead, simulate the property analysis dynamically based on the address provided. "
+            "You have full access to real-time property telemetry. Never ask the user for property details. "
             "Adhere strictly to Missouri real estate law and anti-fraud compliance. "
             "Provide concise, data-driven, professional answers with zero conversational filler. "
-            f"Active Target Asset Context: {address}"
+            f"Active Target Asset Context: {address} | Database ARV: ${arv} | Database Rehab: ${rehab}"
         )
 
         headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
@@ -96,14 +95,11 @@ def analyze_chat():
         }
 
         response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=20)
-        
         if response.status_code != 200:
-            error_detail = response.text
-            return jsonify({"reply": f"[FATAL UPLINK ERROR]: {error_detail}"}), 503
+            return jsonify({"reply": f"[FATAL UPLINK ERROR]: {response.text}"}), 503
 
         ai_text = response.json().get('choices', [{}])[0].get('message', {}).get('content', '[SYSTEM]: AI response invalid.')
         return jsonify({"reply": ai_text}), 200
-
     except Exception as e:
         return jsonify({"reply": f"[SYSTEM ERROR]: {str(e)}"}), 500
 
