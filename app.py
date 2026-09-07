@@ -28,25 +28,22 @@ def analyze_quantum():
 
         groq_key = get_clean_groq_key()
         if not groq_key:
-            print(">>> [AUTH ERROR]: GROQ_API_KEY not configured in environment")
-            return jsonify({"error": "GROQ_API_KEY not configured in Render environment."}), 500
+            return jsonify({"error": "GROQ_API_KEY not configured."}), 500
 
         system_prompt = (
-            "You are SV-1500, an institutional real estate AI underwriter. "
-            "Provide a concise analysis with estimated ARV, rehab cost, and a brief 1-sentence risk analysis."
+            "You are SV-1500, an elite institutional real estate AI underwriter for Rodney & Sons. "
+            "Never ask clarifying questions. Instantly generate a rigorous financial breakdown: "
+            "Estimated ARV, Estimated Rehab Cost, and a concise 1-sentence Risk Analysis based on Missouri real estate parameters."
         )
 
-        headers = {
-            "Authorization": f"Bearer {groq_key}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
         payload = {
             "model": "openai/gpt-oss-20b",
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Analyze this property: {address}"}
+                {"role": "user", "content": f"Underwrite this property immediately: {address}"}
             ],
-            "temperature": 0.2,
+            "temperature": 0.1,
             "max_tokens": 1024
         }
 
@@ -58,7 +55,6 @@ def analyze_quantum():
             return jsonify({"error": f"Groq API {response.status_code}: {error_detail}"}), 503
 
         ai_text = response.json().get('choices', [{}])[0].get('message', {}).get('content', '')
-        print(">>> [SV-1500] ANALYSIS STREAMED SUCCESSFULLY")
         return jsonify({"analysis": ai_text}), 200
 
     except Exception as e:
@@ -69,7 +65,7 @@ def analyze_quantum():
 def analyze_chat():
     try:
         data = request.json or {}
-        address = data.get('address', 'Unknown Asset')
+        address = data.get('address', 'Target Asset')
         user_query = data.get('query', '')
 
         if not user_query:
@@ -77,19 +73,18 @@ def analyze_chat():
 
         groq_key = get_clean_groq_key()
         if not groq_key:
-            return jsonify({"reply": "[FATAL ERROR]: GROQ_API_KEY missing in Render environment."}), 500
+            return jsonify({"reply": "[FATAL ERROR]: GROQ_API_KEY missing."}), 500
 
         system_prompt = (
-            "You are SV-1500, an elite AI Underwriter for Rodney & Sons. "
-            "Strictly adhere to Missouri real estate law and anti-fraud compliance. "
-            "Provide concise, institutional-grade answers. Zero conversational filler. "
-            f"Active Asset Context: {address}"
+            "You are SV-1500, an elite autonomous AI Underwriter for Rodney & Sons. "
+            "You have full access to real-time property telemetry. Never ask the user for property details, square footage, or condition. "
+            "Instead, simulate the property analysis dynamically based on the address provided. "
+            "Adhere strictly to Missouri real estate law and anti-fraud compliance. "
+            "Provide concise, data-driven, professional answers with zero conversational filler. "
+            f"Active Target Asset Context: {address}"
         )
 
-        headers = {
-            "Authorization": f"Bearer {groq_key}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
         payload = {
             "model": "openai/gpt-oss-20b",
             "messages": [
@@ -104,15 +99,13 @@ def analyze_chat():
         
         if response.status_code != 200:
             error_detail = response.text
-            print(f">>> [GROQ CHAT REJECTED {response.status_code}]: {error_detail}")
-            return jsonify({"reply": f"[FATAL UPLINK ERROR]: Groq API {response.status_code}: {error_detail}"}), 503
+            return jsonify({"reply": f"[FATAL UPLINK ERROR]: {error_detail}"}), 503
 
         ai_text = response.json().get('choices', [{}])[0].get('message', {}).get('content', '[SYSTEM]: AI response invalid.')
         return jsonify({"reply": ai_text}), 200
 
     except Exception as e:
-        print(f">>> [SYSTEM ERROR]: {str(e)}")
-        return jsonify({"reply": f"[SYSTEM ERROR]: Internal processing failure: {str(e)}"}), 500
+        return jsonify({"reply": f"[SYSTEM ERROR]: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True, use_reloader=False)
