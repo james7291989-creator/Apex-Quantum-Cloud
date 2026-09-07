@@ -17,7 +17,7 @@ def get_clean_groq_key():
 
 @app.route('/', methods=['GET', 'HEAD'])
 def root():
-    return jsonify({"status": "APEX QUANTUM CORE ONLINE", "model": "llama-3.1-8b-instant"}), 200
+    return jsonify({"status": "APEX QUANTUM CORE ONLINE", "model": "llama3-8b-8192"}), 200
 
 @app.route('/api/v1/analyze/quantum', methods=['POST'])
 def analyze_quantum():
@@ -41,7 +41,7 @@ def analyze_quantum():
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama3-8b-8192",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Analyze this property: {address}"}
@@ -91,7 +91,7 @@ def analyze_chat():
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama3-8b-8192",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_query}
