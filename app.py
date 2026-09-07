@@ -17,7 +17,7 @@ def get_clean_groq_key():
 
 @app.route('/', methods=['GET', 'HEAD'])
 def root():
-    return jsonify({"status": "APEX QUANTUM CORE ONLINE", "model": "mixtral-8x7b-32768"}), 200
+    return jsonify({"status": "APEX QUANTUM CORE ONLINE", "model": "openai/gpt-oss-20b"}), 200
 
 @app.route('/api/v1/analyze/quantum', methods=['POST'])
 def analyze_quantum():
@@ -41,7 +41,7 @@ def analyze_quantum():
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "mixtral-8x7b-32768",
+            "model": "openai/gpt-oss-20b",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Analyze this property: {address}"}
@@ -91,7 +91,7 @@ def analyze_chat():
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "mixtral-8x7b-32768",
+            "model": "openai/gpt-oss-20b",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_query}
