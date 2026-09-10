@@ -74,9 +74,9 @@ def execute_apex_quant_underwriting(address, db_arv, db_rehab, fee, condition_le
     MAX_SAFE_PPSF = 120.0
     SAFE_DEFAULT_PPSF = 105.0
 
-    if implied_ppsf > MAX_SAFE_PPSF and "ISOLATED" in confidence:
+    if implied_ppsf > MAX_SAFE_PPSF and ("ISOLATED" in confidence or "BLIND" in confidence):
         true_arv = sqft * SAFE_DEFAULT_PPSF
-        confidence = f"GUARDRAIL ACTIVE: Poisoned DB (${db_val:,.0f}) obliterated. Capped at ${SAFE_DEFAULT_PPSF}/sqft."
+        confidence = f"GUARDRAIL ACTIVE: Poisoned DB/Macro inflation obliterated. Capped at ${SAFE_DEFAULT_PPSF}/sqft."
 
     rates = {"Light": 15.0, "Medium": 35.0, "Heavy": 55.0}
     rate = rates.get(condition_level, 35.0)
