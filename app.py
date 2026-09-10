@@ -36,7 +36,7 @@ def execute_apex_quant_underwriting(address, db_arv, db_rehab, fee, condition_le
     try:
         res = Groq(api_key=groq_key).chat.completions.create(
             model="llama3-8b-8192",
-            messages=[{"role": "user", "content": f"Extract valid JSON only: zillow_arv, redfin_arv, sqft. Snippets: {telemetry}"}],
+            messages=[{"role": "user", "content": f"CRITICAL: Extract valid JSON only: zillow_arv, redfin_arv, sqft. ONLY extract values explicitly tied to the exact address. IGNORE zip code averages, median prices, and 'homes in this area' statistics. Snippets: {telemetry}"}],
             temperature=0.0, response_format={"type": "json_object"}
         )
         raw = res.choices[0].message.content
@@ -69,14 +69,15 @@ def execute_apex_quant_underwriting(address, db_arv, db_rehab, fee, condition_le
         true_arv = 93500.0
         confidence = "F [BLIND FALLBACK]"
 
-    # --- THE GOD-TIER PPSF CEILING GUARDRAIL ---
+    # --- THE GOD-TIER PPSF CEILING GUARDRAIL (NOW ABSOLUTE) ---
     implied_ppsf = true_arv / sqft
     MAX_SAFE_PPSF = 120.0
     SAFE_DEFAULT_PPSF = 105.0
 
-    if implied_ppsf > MAX_SAFE_PPSF and ("ISOLATED" in confidence or "BLIND" in confidence):
-        true_arv = sqft * SAFE_DEFAULT_PPSF
-        confidence = f"GUARDRAIL ACTIVE: Poisoned DB/Macro inflation obliterated. Capped at ${SAFE_DEFAULT_PPSF}/sqft."
+    if implied_ppsf > MAX_SAFE_PPSF:
+        capped_arv = sqft * SAFE_DEFAULT_PPSF
+        confidence = f"ABSOLUTE GUARDRAIL TRIGGERED: Macro-Inflation Detected (${true_arv:,.0f} = ${implied_ppsf:,.0f}/sqft). Capped at absolute ceiling of ${SAFE_DEFAULT_PPSF}/sqft."
+        true_arv = capped_arv
 
     rates = {"Light": 15.0, "Medium": 35.0, "Heavy": 55.0}
     rate = rates.get(condition_level, 35.0)
@@ -87,13 +88,13 @@ def execute_apex_quant_underwriting(address, db_arv, db_rehab, fee, condition_le
 
     readout = f"""
 >>> INITIATING PREDATOR UPLINK...
->>> [SYSTEM]: Mathematical Ceiling Guardrails Active.
+>>> [SYSTEM]: Absolute Mathematical Ceiling Guardrails Active.
 >>> ANALYZING ASSET: {address}
 
 === QUANTITATIVE UNDERWRITING DOSSIER ===
 | VECTOR SOURCE | CAPTURED VALUE |
 |---------------|----------------|
-| Database Feed | ${db_val:,.2f} | 
+| Database Feed | ${db_val:,.2f} |
 | Live Telemetry| {"BLOCKED BY FIREWALL" if z_arv == 0 else f"${z_arv:,.2f}"} |
 | Footprint     | {sqft:,.0f} SqFt |
 
@@ -105,7 +106,7 @@ def execute_apex_quant_underwriting(address, db_arv, db_rehab, fee, condition_le
 >>> **MAX ALLOWABLE OFFER (MAO) : ${mao:,.2f}**
 
 === SYSTEM CONFIDENCE RATING : [{confidence}] ===
-*Notes: The algorithm enforces a strict Maximum Price-Per-Square-Foot (PPSF) ceiling. If live telemetry fails and the database provides a mathematically impossible valuation, the system physically caps the ARV to protect capital.*
+*Notes: The algorithm enforces an absolute Maximum Price-Per-Square-Foot (PPSF) ceiling of ${MAX_SAFE_PPSF}/sqft. Any algorithmic valuation exceeding this matrix is physically overridden to protect capital.*
 >>> SV-1500 PREDATOR UNDERWRITING COMPLETE.
 """
     return readout.strip()
@@ -115,7 +116,7 @@ def analyze_quantum():
     data = request.json or {}
     asset = data.get('asset', data)
     return jsonify({"analysis": execute_apex_quant_underwriting(
-        str(asset.get('address', 'UNKNOWN')), float(asset.get('arv', 0)), 
+        str(asset.get('address', 'UNKNOWN')), float(asset.get('arv', 0)),
         float(asset.get('rehab_estimate', asset.get('rehab', 0))), float(asset.get('fee', 15000)), "Medium"
     )}), 200
 
@@ -123,7 +124,7 @@ def analyze_quantum():
 def analyze_chat():
     data = request.json or {}
     return jsonify({"reply": execute_apex_quant_underwriting(
-        str(data.get('address', 'UNKNOWN')), float(data.get('arv', 0)), 
+        str(data.get('address', 'UNKNOWN')), float(data.get('arv', 0)),
         float(data.get('rehab', 0)), float(data.get('fee', 15000)), "Medium"
     )}), 200
 
