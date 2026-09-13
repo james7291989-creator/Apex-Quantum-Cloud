@@ -1,4 +1,3 @@
-
 import os
 import re
 import requests
@@ -10,6 +9,11 @@ try:
     from groq import Groq
 except ImportError:
     Groq = None
+
+try:
+    import property_engine
+except ImportError:
+    property_engine = None
 
 app = Flask(__name__)
 CORS(app)
@@ -152,6 +156,9 @@ def analyze_quantum():
         zip_code = extracted_zip
         zip_price = 0.0
         parcel_hit = False
+        data_source = None
+        siphon = None
+        siphon_summary = None
         parcel_lat = None
         parcel_lon = None
 
@@ -166,6 +173,7 @@ def analyze_quantum():
             if parcel_res.data:
                 parcel = parcel_res.data[0]
                 parcel_hit = True
+                data_source = "COUNTY_PARCELS"
                 sqft = float(parcel.get('heated_sqft', 0) or 0)
                 year_built = int(parcel.get('year_built', 0) or 0)
                 if not zip_code:
@@ -181,6 +189,45 @@ def analyze_quantum():
             census_zip, geo_lat, geo_lon = fetch_census_geodata(raw_input)
             if census_zip:
                 zip_code = census_zip
+
+        # 2.5) ARCGIS REST SIPHON - ground-truth specs when the local lake misses
+        #      (public county GIS, synchronous requests, zero-cost; never raises)
+        if (not sqft or not year_built) and property_engine is not None:
+            siphon = property_engine.get_property_data_sync(
+                raw_input,
+                county_hint=asset.get('county'),
+                zip_code=zip_code or '',
+                timeout=8,
+            ) or None
+            if siphon:
+                if siphon.get("sqft"):
+                    sqft = float(siphon["sqft"])
+                if siphon.get("year_built"):
+                    year_built = int(siphon["year_built"])
+                if (siphon.get("sqft") or siphon.get("year_built")) and siphon.get("data_source"):
+                    data_source = siphon["data_source"]
+                if siphon.get("county") and supabase:
+                    try:
+                        supabase.table('parcel_siphon_cache').upsert({
+                            "address_normalized": re.sub(r"\s+", " ",
+                                                         raw_input.strip().upper()),
+                            "sqft": siphon.get("sqft"),
+                            "year_built": siphon.get("year_built"),
+                            "county": siphon.get("county"),
+                            "data_source": siphon.get("data_source"),
+                        }, on_conflict="address_normalized").execute()
+                    except Exception:
+                        pass
+            siphon_summary = None
+            if siphon:
+                siphon_summary = {
+                    "county": siphon.get("county"),
+                    "parcel_id": siphon.get("parcel_id"),
+                    "owner": siphon.get("owner"),
+                    "situs": siphon.get("situs"),
+                    "data_source": siphon.get("data_source"),
+                    "supports_specs": bool(siphon.get("sqft")),
+                }
 
         # 3) ZIP MARKET RATE - median baseline first, fallback index second
         if supabase and zip_code:
@@ -240,10 +287,12 @@ def analyze_quantum():
                     "address": raw_input, "zip_code": zip_code, "property_type": property_type,
                     "condition": condition, "fee": round(fee, 2), "sqft": sqft, "year_built": year_built,
                     "arv_multiplier": round(arv_multiplier, 2), "rehab_rate": COND_RATE[condition],
+                    "data_source": data_source,
                 },
                 "exits": None,
                 "geocode": geocode,
                 "seller_intel": seller_intel,
+                "siphon": siphon_summary,
             }), 200
 
         # ------------------------------------------------------------------
@@ -318,6 +367,7 @@ def analyze_quantum():
             "condition": condition, "fee": round(fee, 2), "sqft": sqft, "year_built": year_built,
             "arv_multiplier": round(arv_multiplier, 2), "rehab_rate": rehab_rate,
             "arv": round(arv, 2), "rehab": round(rehab, 2),
+            "data_source": data_source,
         }
 
         # ------------------------------------------------------------------
@@ -354,6 +404,8 @@ def analyze_quantum():
             vector_source = "LOCAL DATA LAKE + CENSUS GEO"
         elif census_zip:
             vector_source = "FEDERAL CENSUS"
+        if siphon and (siphon.get("sqft") or siphon.get("year_built")):
+            vector_source += " + ARCGIS SIPHON"
 
         readout = "\n".join([
             ">>> INITIATING QUANTUM UPLINK...",
@@ -402,6 +454,7 @@ def analyze_quantum():
             "exits": exits,
             "geocode": geocode,
             "seller_intel": seller_intel,
+            "siphon": siphon_summary,
         }), 200
 
     except Exception as e:
