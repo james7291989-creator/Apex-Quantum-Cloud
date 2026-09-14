@@ -122,49 +122,44 @@ def analyze_quantum():
     try:
         from titan_quant import TitanQuantEngine
         
-        # 1. Safely extract incoming data from React
         data = request.get_json() or {}
         address = data.get("address", "")
         raw_query = data.get("raw_query", "")
         manual_sqft = data.get("sqft", 0)
         manual_year = data.get("year_built", 0)
-
-        # 2. Feed the Titan NLP Engine
+        
+        # Combine all input into a single telemetry string for the Titan Engine
         raw_combined = f"{address} {manual_sqft} {manual_year} {raw_query}"
         params = TitanQuantEngine.parse_raw_telemetry(raw_combined)
         
-        # Override with explicit UI inputs if provided
-        if manual_sqft: params["sqft"] = float(manual_sqft)
-        if manual_year: params["year_built"] = int(manual_year)
-        if data.get("target_fee"): params["target_fee"] = float(data.get("target_fee"))
-        if data.get("condition"): params["condition"] = data.get("condition")
-
-        # 3. Execute the God-Tier Math
+        # Force explicit overrides if provided by the UI
+        if manual_sqft and float(manual_sqft) > 0:
+            params["sqft"] = float(manual_sqft)
+            params["is_synthetic_sqft"] = False
+        if manual_year and int(manual_year) > 0:
+            params["year_built"] = int(manual_year)
+            
+        # Execute the institutional math
         result = TitanQuantEngine.execute_underwrite(params)
         
-        # 4. Return EXACT JSON structure React needs to update the Escrow & Live Board
+        # Return the EXACT JSON payload required to light up the Live Board and Escrow Contract
         return jsonify({
             "status": "success",
             "mao": result["base_mao"],
             "arv": result["arv"],
-            "rehab": result["rehab"],
-            "analysis": result["analysis"],
-            "dscr": result["dscr"],
-            "cash_on_cash": result["cash_on_cash"]
+            "analysis": result["analysis"]
         }), 200
 
     except Exception as e:
         import traceback
-        error_msg = str(e)
-        # Never crash silently. Send the exact Python error to the React terminal.
+        err_msg = str(e)
+        # Never crash silently. Always return 200 with the error text so the UI doesn't say "Unreachable"
         return jsonify({
             "status": "error",
             "mao": 0,
             "arv": 0,
-            "analysis": f">>> [SYSTEM FATAL CRASH]: Backend exception triggered.
->>> ERROR: {error_msg}
->>> The system halted to protect grid integrity."
-        }), 200  # Return 200 so React can read the error message
+            "analysis": f">>> [SYSTEM FATAL]: Backend Math Failure. ERROR: {err_msg}"
+        }), 200
 
 
 if __name__ == '__main__':
