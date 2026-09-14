@@ -1,3 +1,4 @@
+from titan_quant import TitanQuantEngine
 import os
 import re
 import requests
