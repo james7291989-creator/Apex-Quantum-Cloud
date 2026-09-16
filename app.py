@@ -121,28 +121,46 @@ def analyze_quantum():
 
     try:
         from titan_quant import TitanQuantEngine
+        try:
+            from ai_agent import process_chat_query
+        except ImportError:
+            process_chat_query = None
         
         data = request.get_json() or {}
-        address = data.get("address", "")
-        raw_query = data.get("raw_query", "")
+        address = data.get("address", "").strip()
+        raw_query = data.get("raw_query", "").strip()
         manual_sqft = data.get("sqft", 0)
         manual_year = data.get("year_built", 0)
         
-        # Combine all input into a single telemetry string for the Titan Engine
-        raw_combined = f"{address} {manual_sqft} {manual_year} {raw_query}"
+        raw_combined = f"{address} {manual_sqft} {manual_year} {raw_query}".strip()
+        
+        # --- APEX INTENT ROUTER ---
+        # If the query starts with conversational words or question marks, route to Groq AI
+        lower_query = raw_combined.lower()
+        is_question = any(lower_query.startswith(q) for q in ["how", "what", "where", "why", "who", "can", "is", "show", "tell"]) or "?" in lower_query or "/chat" in lower_query
+        
+        if is_question and process_chat_query is not None:
+            # Route to AI Chatbot
+            clean_query = raw_combined.replace("/chat", "").strip()
+            ai_response = process_chat_query(clean_query, supabase)
+            return jsonify({
+                "status": "success",
+                "mao": 0,
+                "arv": 0,
+                "analysis": f">>> [SV-1500 AI]: {ai_response.get('response', 'AI Offline')}"
+            }), 200
+
+        # --- ROUTE TO UNDERWRITING ---
         params = TitanQuantEngine.parse_raw_telemetry(raw_combined)
         
-        # Force explicit overrides if provided by the UI
         if manual_sqft and float(manual_sqft) > 0:
             params["sqft"] = float(manual_sqft)
             params["is_synthetic_sqft"] = False
         if manual_year and int(manual_year) > 0:
             params["year_built"] = int(manual_year)
             
-        # Execute the institutional math
         result = TitanQuantEngine.execute_underwrite(params)
         
-        # Return the EXACT JSON payload required to light up the Live Board and Escrow Contract
         return jsonify({
             "status": "success",
             "mao": result["base_mao"],
@@ -151,14 +169,12 @@ def analyze_quantum():
         }), 200
 
     except Exception as e:
-        import traceback
         err_msg = str(e)
-        # Never crash silently. Always return 200 with the error text so the UI doesn't say "Unreachable"
         return jsonify({
             "status": "error",
             "mao": 0,
             "arv": 0,
-            "analysis": f">>> [SYSTEM FATAL]: Backend Math Failure. ERROR: {err_msg}"
+            "analysis": f">>> [SYSTEM FATAL]: Backend Failure. ERROR: {err_msg}"
         }), 200
 
 
