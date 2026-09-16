@@ -121,10 +121,14 @@ def analyze_quantum():
 
     try:
         from titan_quant import TitanQuantEngine
+        import os
+        
+        # Attempt to load Groq for the Sentient Underwriter
         try:
-            from ai_agent import process_chat_query
-        except ImportError:
-            process_chat_query = None
+            from groq import Groq
+            groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        except:
+            groq_client = None
         
         data = request.get_json() or {}
         address = data.get("address", "").strip()
@@ -134,38 +138,46 @@ def analyze_quantum():
         
         raw_combined = f"{address} {manual_sqft} {manual_year} {raw_query}".strip()
         
-        # --- APEX INTENT ROUTER ---
-        # If the query starts with conversational words or question marks, route to Groq AI
-        lower_query = raw_combined.lower()
-        is_question = any(lower_query.startswith(q) for q in ["how", "what", "where", "why", "who", "can", "is", "show", "tell"]) or "?" in lower_query or "/chat" in lower_query
-        
-        if is_question and process_chat_query is not None:
-            # Route to AI Chatbot
-            clean_query = raw_combined.replace("/chat", "").strip()
-            ai_response = process_chat_query(clean_query, supabase)
-            return jsonify({
-                "status": "success",
-                "mao": 0,
-                "arv": 0,
-                "analysis": f">>> [SV-1500 AI]: {ai_response.get('response', 'AI Offline')}"
-            }), 200
-
-        # --- ROUTE TO UNDERWRITING ---
+        # 1. ALWAYS Run the Underwriting Math Silently to get the context
         params = TitanQuantEngine.parse_raw_telemetry(raw_combined)
-        
         if manual_sqft and float(manual_sqft) > 0:
             params["sqft"] = float(manual_sqft)
             params["is_synthetic_sqft"] = False
         if manual_year and int(manual_year) > 0:
             params["year_built"] = int(manual_year)
             
-        result = TitanQuantEngine.execute_underwrite(params)
+        deal_context = TitanQuantEngine.execute_underwrite(params)
         
+        # 2. INTENT ROUTER: Is the user asking a question?
+        lower_query = raw_query.lower()
+        is_question = any(lower_query.startswith(q) for q in ["how", "what", "where", "why", "who", "can", "is", "should"]) or "?" in lower_query
+        
+        # 3. SENTIENT AI RESPONSE
+        if is_question and groq_client:
+            system_prompt = f"You are the SV-1500 Titan AI Underwriter for Rodney & Sons. The user is asking a question about the current deal. Here is the hard data for the deal: {deal_context}. Answer the user's question accurately using ONLY this data. Be brutally professional, concise, and boardroom-ready. Do not use pleasantries."
+            
+            chat_completion = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": raw_query}
+                ],
+                model="llama3-8b-8192",
+            )
+            ai_reply = chat_completion.choices[0].message.content
+            
+            return jsonify({
+                "status": "success",
+                "mao": deal_context["base_mao"],
+                "arv": deal_context["arv"],
+                "analysis": f">>> [SV-1500 AI UNDERWRITER]: {ai_reply}"
+            }), 200
+
+        # 4. STANDARD TERMINAL DOSSIER (If not a question, return the normal Bloomberg readout)
         return jsonify({
             "status": "success",
-            "mao": result["base_mao"],
-            "arv": result["arv"],
-            "analysis": result["analysis"]
+            "mao": deal_context["base_mao"],
+            "arv": deal_context["arv"],
+            "analysis": deal_context["analysis"]
         }), 200
 
     except Exception as e:
